@@ -39,6 +39,10 @@ export interface AgentState {
   codexRootThreadId?: string;
   /** Codex child thread ID -> parent spawn tool ID for subagent visualization. */
   codexSubagentParentToolIds?: Map<string, string>;
+  /** Hidden external Codex child sessions are projected onto a parent root agent. */
+  externalCodexParentAgentId?: number;
+  externalCodexParentToolId?: string;
+  externalCodexChildLabel?: string;
   /** Provider that created this agent */
   providerId: ProviderId;
   /** Set when SessionEnd(reason=clear) fires; cleared when SessionStart(source=clear) reassigns */
