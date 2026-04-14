@@ -1,6 +1,6 @@
 # Codex External Discovery Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Add Codex external-session discovery and attach so already-running Codex sessions appear in Pixel Agents with workspace-scoped visibility by default, global visibility behind `Watch All Sessions`, and detach-only close semantics.
 
@@ -56,7 +56,7 @@
 - Create: `server/__tests__/providerAdapters.test.ts`
 - Modify: `server/__tests__/providerRegistry.test.ts`
 
-- [ ] **Step 1: Write the failing provider discovery tests**
+- [x] **Step 1: Write the failing provider discovery tests**
 
 Add assertions that Codex is externally discoverable and that the adapter contract exposes Codex discovery information:
 
@@ -86,7 +86,7 @@ describe('providerAdapters', () => {
 });
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run:
 
@@ -97,7 +97,7 @@ Expected:
 - FAIL because Codex still reports `supportsExternalDiscovery: false`
 - FAIL because the adapter contract does not yet expose a platform hook policy
 
-- [ ] **Step 3: Extend the provider adapter contract**
+- [x] **Step 3: Extend the provider adapter contract**
 
 Update `src/providers/providerAdapter.ts` to add the provider-driven discovery hooks needed by the scanner:
 
@@ -130,7 +130,7 @@ export interface ProviderAdapter {
 }
 ```
 
-- [ ] **Step 4: Wire Codex and Claude to the new contract**
+- [x] **Step 4: Wire Codex and Claude to the new contract**
 
 Make the minimal descriptor/provider changes:
 
@@ -158,7 +158,7 @@ listExternalSessionFiles(rootDir: string): string[] {
 
 Keep Claude behavior unchanged by returning `true` from `supportsHooksOnCurrentPlatform()` and leaving its root as `~/.claude/projects`.
 
-- [ ] **Step 5: Run validation**
+- [x] **Step 5: Run validation**
 
 Run:
 
@@ -167,7 +167,7 @@ Run:
 
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/providers/providerAdapter.ts src/providers/providerRegistry.ts src/providers/claude/claudeProvider.ts src/providers/codex/codexProvider.ts server/__tests__/providerRegistry.test.ts server/__tests__/providerAdapters.test.ts
@@ -181,7 +181,7 @@ git commit -m "refactor: enable codex external discovery contract"
 - Create: `server/src/providers/codex/codexExternalDiscovery.ts`
 - Create: `server/__tests__/codexExternalDiscovery.test.ts`
 
-- [ ] **Step 1: Write the failing parser tests**
+- [x] **Step 1: Write the failing parser tests**
 
 Add tests that cover recursive rollout discovery plus `session_meta` parsing for both root and child sessions:
 
@@ -214,7 +214,7 @@ describe('codexExternalDiscovery', () => {
 });
 ```
 
-- [ ] **Step 2: Run the parser tests to verify they fail**
+- [x] **Step 2: Run the parser tests to verify they fail**
 
 Run:
 
@@ -222,7 +222,7 @@ Run:
 
 Expected: FAIL because the parser module does not exist yet
 
-- [ ] **Step 3: Implement recursive rollout discovery and metadata parsing**
+- [x] **Step 3: Implement recursive rollout discovery and metadata parsing**
 
 Create `server/src/providers/codex/codexExternalDiscovery.ts` with two pure entry points:
 
@@ -248,7 +248,7 @@ The parser must extract:
 - `label` from `agent_nickname ?? agent_role ?? 'Subagent'`
 - `projectDir` from `path.dirname(transcriptPath)`
 
-- [ ] **Step 4: Run the parser tests to verify they pass**
+- [x] **Step 4: Run the parser tests to verify they pass**
 
 Run:
 
@@ -256,7 +256,7 @@ Run:
 
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add server/src/providers/codex/codexExternalDiscovery.ts server/__tests__/codexExternalDiscovery.test.ts
@@ -271,7 +271,7 @@ git commit -m "test: add codex external transcript discovery parser"
 - Create: `server/__tests__/codexExternalAttachPlanner.test.ts`
 - Modify: `src/types.ts`
 
-- [ ] **Step 1: Write the failing attach-planner tests**
+- [x] **Step 1: Write the failing attach-planner tests**
 
 Add tests for the four decisions the watcher must make:
 
@@ -306,7 +306,7 @@ describe('codexExternalAttachPlanner', () => {
 });
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run:
 
@@ -314,7 +314,7 @@ Run:
 
 Expected: FAIL because the planner module does not exist yet
 
-- [ ] **Step 3: Implement the planner and the minimal state additions**
+- [x] **Step 3: Implement the planner and the minimal state additions**
 
 Add a pure helper that returns one of:
 
@@ -338,7 +338,7 @@ externalCodexParentToolId?: string;
 externalCodexChildLabel?: string;
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run:
 
@@ -347,7 +347,7 @@ Run:
 
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add server/src/providers/codex/codexExternalAttachPlanner.ts server/__tests__/codexExternalAttachPlanner.test.ts src/types.ts
@@ -362,7 +362,7 @@ git commit -m "feat: plan codex external root and child attachment"
 - Modify: `src/PixelAgentsViewProvider.ts`
 - Modify: `src/agentManager.ts`
 
-- [ ] **Step 1: Write the failing end-to-end tests for external Codex attach**
+- [x] **Step 1: Write the failing end-to-end tests for external Codex attach**
 
 Create the new e2e file first so the runtime work is driven by user-visible behavior:
 
@@ -385,7 +385,7 @@ test('external Codex child session appears as a best-effort subagent', async ({}
 });
 ```
 
-- [ ] **Step 2: Run the new e2e file to verify it fails**
+- [x] **Step 2: Run the new e2e file to verify it fails**
 
 Run:
 
@@ -396,7 +396,7 @@ Expected:
 - FAIL because the launch helper does not seed external transcripts yet
 - FAIL because the watcher only understands Claude-style flat JSONL directories
 
-- [ ] **Step 3: Seed external Codex rollout transcripts in the e2e launcher**
+- [x] **Step 3: Seed external Codex rollout transcripts in the e2e launcher**
 
 Update `e2e/helpers/launch.ts` so test titles can request seeded external-session scenarios. The helper should create realistic files under the isolated temp home:
 
@@ -431,7 +431,7 @@ function seedCodexExternalRollout(
 }
 ```
 
-- [ ] **Step 4: Replace the Claude-centric external scanner paths with provider-driven discovery**
+- [x] **Step 4: Replace the Claude-centric external scanner paths with provider-driven discovery**
 
 Refactor `src/fileWatcher.ts` so external scanning no longer assumes:
 
@@ -459,7 +459,7 @@ Platform rule:
 - only skip workspace scanning when hooks are actually active for the provider being scanned
 - on Windows, Codex must continue transcript scanning even when the global hooks toggle is on
 
-- [ ] **Step 5: Keep replay, close, and restore behavior consistent**
+- [x] **Step 5: Keep replay, close, and restore behavior consistent**
 
 Update `src/agentManager.ts` and the watcher cleanup paths so synthetic external Codex subagents survive webview refreshes and clear correctly:
 
@@ -480,7 +480,7 @@ for (const [parentToolId, subagentIds] of agent.activeSubagentToolIds) {
 
 Also keep the external close contract unchanged in `src/PixelAgentsViewProvider.ts`: `closeAgent` on an external Codex session must only dismiss and detach.
 
-- [ ] **Step 6: Run validation**
+- [x] **Step 6: Run validation**
 
 Run:
 
@@ -490,7 +490,7 @@ Run:
 
 Expected: PASS
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/fileWatcher.ts src/PixelAgentsViewProvider.ts src/agentManager.ts e2e/helpers/launch.ts e2e/tests/codex-external-discovery.spec.ts
@@ -504,7 +504,7 @@ git commit -m "feat: attach external codex sessions and best-effort subagents"
 - Modify: `README.md`
 - Modify: `webview-ui/src/changelogData.ts`
 
-- [ ] **Step 1: Update the README preview scope**
+- [x] **Step 1: Update the README preview scope**
 
 Replace the deferred external-discovery note with the shipped behavior:
 
@@ -512,7 +512,7 @@ Replace the deferred external-discovery note with the shipped behavior:
 - **Codex preview scope** - Codex launch, app-server lifecycle mapping, `spawnAgent` visualization, and external-session discovery/attach are supported. Windows uses transcript-based external discovery; non-Windows can additionally use hooks where available.
 ```
 
-- [ ] **Step 2: Add a changelog bullet**
+- [x] **Step 2: Add a changelog bullet**
 
 Update `webview-ui/src/changelogData.ts`:
 
@@ -521,7 +521,7 @@ Update `webview-ui/src/changelogData.ts`:
 'Best-effort external Codex child-thread attach as linked subagents',
 ```
 
-- [ ] **Step 3: Run the final regression suite**
+- [x] **Step 3: Run the final regression suite**
 
 Run:
 
@@ -532,7 +532,7 @@ Run:
 
 Expected: PASS
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add README.md webview-ui/src/changelogData.ts

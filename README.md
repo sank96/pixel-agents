@@ -124,7 +124,7 @@ The webview runs a lightweight game loop with canvas rendering, BFS pathfinding,
 
 - **Agent-terminal sync** - terminal matching is still not perfectly robust, especially during rapid open/close or restore flows.
 - **Claude waiting heuristics** - Claude JSONL transcripts still require heuristic detection for some waiting and turn-complete transitions.
-- **Codex preview scope** - Codex launch, lifecycle mapping, and `spawnAgent` visualization are supported, but external-session discovery/attach is still deferred.
+- **Codex preview scope** - Codex launch, lifecycle mapping, `spawnAgent` visualization, and external-session discovery/attach are supported. Windows uses transcript-based external discovery; non-Windows keeps the same transcript/scanner path while hooks continue to evolve.
 - **Linux/macOS tip** - if you launch VS Code without a folder open, agents start in your home directory and Claude sessions are tracked under `~/.claude/projects/`.
 
 ## Troubleshooting

@@ -33,6 +33,8 @@ export const changelogEntries: ChangelogEntry[] = [
           'Provider-aware launch flow for Claude Code and Codex',
           'Codex app-server lifecycle mapping into the existing office states',
           'Codex spawnAgent parity in the office and debug view',
+          'Codex external-session discovery for the current workspace and Watch All Sessions',
+          'Best-effort external Codex child-thread attach as linked subagents',
           'Mock Codex fixtures, smoke checks, and end-to-end coverage for provider switching and multi-agent activity',
         ],
       },
