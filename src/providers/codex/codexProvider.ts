@@ -1,6 +1,7 @@
 import * as os from 'os';
 import * as path from 'path';
 
+import { listCodexRolloutFiles } from '../../../server/src/providers/codex/codexExternalDiscovery.js';
 import type {
   ProviderAdapter,
   ProviderLaunchPlan,
@@ -56,6 +57,9 @@ export const codexProvider: ProviderAdapter = {
   },
   getProjectsRoot(): string {
     return path.join(os.homedir(), '.codex', 'sessions');
+  },
+  listExternalSessionFiles(rootDir: string): string[] {
+    return listCodexRolloutFiles(rootDir);
   },
   supportsHooksOnCurrentPlatform(): boolean {
     return process.platform !== 'win32';

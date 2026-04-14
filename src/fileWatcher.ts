@@ -19,6 +19,7 @@
  * Only their timer logic (permission 7s, text-idle 5s) is suppressed by hookDelivered.
  */
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 
@@ -35,7 +36,10 @@ import {
   GLOBAL_SCAN_ACTIVE_MIN_SIZE,
   PROJECT_SCAN_INTERVAL_MS,
 } from '../server/src/constants.js';
+import { decideCodexExternalAttach } from '../server/src/providers/codex/codexExternalAttachPlanner.js';
+import { parseCodexExternalSession } from '../server/src/providers/codex/codexExternalDiscovery.js';
 import { removeAgent } from './agentManager.js';
+import type { ExternalSessionDescriptor } from './providers/providerAdapter.js';
 import { getExternalDiscoveryAdapters } from './providers/providerAdapters.js';
 import { getProviderIdForTerminalName } from './providers/providerTerminalMatcher.js';
 import { DEFAULT_PROVIDER_ID, type ProviderId } from './providers/providerTypes.js';
@@ -54,6 +58,15 @@ export const seededMtimes = new Map<string, number>();
 
 /** /clear files waiting for second tick (gives per-agent check time to claim first). */
 const pendingClearFiles = new Map<string, number>();
+
+interface AttachedExternalCodexChildProjection {
+  parentAgentId: number;
+  parentToolId: string;
+  toolId: string;
+  transcriptPath: string;
+}
+
+const attachedExternalCodexChildren = new Map<string, AttachedExternalCodexChildProjection>();
 
 /** Dependencies for per-agent /clear detection in readNewLines polling.
  *  Set once by ensureProjectScan; used by startFileWatching's poll loop. */
@@ -691,6 +704,288 @@ function adoptExternalSession(
   readNewLines(id, agents, waitingTimers, permissionTimers, webview);
 }
 
+function normalizePathKey(filePath: string): string {
+  return path.resolve(filePath).toLowerCase();
+}
+
+function getCodexWorkspaceKeys(): Set<string> {
+  const keys = new Set<string>();
+  const workspaceFolders = vscode.workspace.workspaceFolders;
+  if (!workspaceFolders || workspaceFolders.length === 0) {
+    keys.add(normalizePathKey(os.homedir()));
+    return keys;
+  }
+  for (const folder of workspaceFolders) {
+    keys.add(normalizePathKey(folder.uri.fsPath));
+  }
+  return keys;
+}
+
+function isTrackedAgentFile(filePath: string, agents: Map<number, AgentState>): boolean {
+  const normalized = normalizePathKey(filePath);
+  for (const agent of agents.values()) {
+    if (normalizePathKey(agent.jsonlFile) === normalized) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function syntheticCodexChildToolId(sessionId: string): string {
+  return `external-codex-child:${sessionId}`;
+}
+
+function replayExternalCodexChildGroup(
+  parentAgent: AgentState,
+  parentToolId: string,
+  webview: vscode.Webview | undefined,
+): void {
+  if (!webview) return;
+  const subToolIds = parentAgent.activeSubagentToolIds.get(parentToolId);
+  if (!subToolIds || subToolIds.size === 0) return;
+  const statuses = parentAgent.activeSubagentToolStatuses.get(parentToolId);
+  const names = parentAgent.activeSubagentToolNames.get(parentToolId);
+  for (const toolId of subToolIds) {
+    const status = statuses?.get(toolId);
+    if (!status) continue;
+    webview.postMessage({
+      type: 'subagentToolStart',
+      id: parentAgent.id,
+      parentToolId,
+      toolId,
+      toolName: names?.get(toolId) ?? 'Agent',
+      status,
+    });
+  }
+}
+
+function clearExternalCodexChildProjection(
+  projection: AttachedExternalCodexChildProjection,
+  agents: Map<number, AgentState>,
+  knownJsonlFiles: Set<string>,
+  webview: vscode.Webview | undefined,
+): void {
+  const parentAgent = agents.get(projection.parentAgentId);
+  if (parentAgent) {
+    parentAgent.activeSubagentToolIds.get(projection.parentToolId)?.delete(projection.toolId);
+    parentAgent.activeSubagentToolNames.get(projection.parentToolId)?.delete(projection.toolId);
+    parentAgent.activeSubagentToolStatuses.get(projection.parentToolId)?.delete(projection.toolId);
+
+    const remaining = parentAgent.activeSubagentToolIds.get(projection.parentToolId);
+    if (remaining && remaining.size > 0) {
+      webview?.postMessage({
+        type: 'subagentClear',
+        id: parentAgent.id,
+        parentToolId: projection.parentToolId,
+      });
+      replayExternalCodexChildGroup(parentAgent, projection.parentToolId, webview);
+    } else {
+      parentAgent.activeSubagentToolIds.delete(projection.parentToolId);
+      parentAgent.activeSubagentToolNames.delete(projection.parentToolId);
+      parentAgent.activeSubagentToolStatuses.delete(projection.parentToolId);
+      webview?.postMessage({
+        type: 'subagentClear',
+        id: parentAgent.id,
+        parentToolId: projection.parentToolId,
+      });
+    }
+  }
+
+  knownJsonlFiles.delete(projection.transcriptPath);
+  attachedExternalCodexChildren.delete(normalizePathKey(projection.transcriptPath));
+}
+
+function attachExternalCodexChildProjection(
+  transcriptPath: string,
+  sessionId: string,
+  label: string | undefined,
+  parentAgentId: number,
+  parentToolId: string,
+  agents: Map<number, AgentState>,
+  knownJsonlFiles: Set<string>,
+  webview: vscode.Webview | undefined,
+): void {
+  const normalizedPath = normalizePathKey(transcriptPath);
+  if (attachedExternalCodexChildren.has(normalizedPath)) return;
+
+  const parentAgent = agents.get(parentAgentId);
+  if (!parentAgent) return;
+
+  const toolId = syntheticCodexChildToolId(sessionId);
+  const status = label ? `Subtask: ${label}` : 'Running subtask';
+
+  const subToolIds = parentAgent.activeSubagentToolIds.get(parentToolId) ?? new Set<string>();
+  subToolIds.add(toolId);
+  parentAgent.activeSubagentToolIds.set(parentToolId, subToolIds);
+
+  const subToolNames =
+    parentAgent.activeSubagentToolNames.get(parentToolId) ?? new Map<string, string>();
+  subToolNames.set(toolId, 'Agent');
+  parentAgent.activeSubagentToolNames.set(parentToolId, subToolNames);
+
+  const subToolStatuses =
+    parentAgent.activeSubagentToolStatuses.get(parentToolId) ?? new Map<string, string>();
+  subToolStatuses.set(toolId, status);
+  parentAgent.activeSubagentToolStatuses.set(parentToolId, subToolStatuses);
+
+  attachedExternalCodexChildren.set(normalizedPath, {
+    parentAgentId,
+    parentToolId,
+    toolId,
+    transcriptPath,
+  });
+  knownJsonlFiles.add(transcriptPath);
+
+  webview?.postMessage({
+    type: 'subagentToolStart',
+    id: parentAgentId,
+    parentToolId,
+    toolId,
+    toolName: 'Agent',
+    status,
+  });
+}
+
+function cleanupStaleExternalCodexChildren(
+  agents: Map<number, AgentState>,
+  knownJsonlFiles: Set<string>,
+  webview: vscode.Webview | undefined,
+): void {
+  const now = Date.now();
+  for (const projection of attachedExternalCodexChildren.values()) {
+    let shouldClear = !agents.has(projection.parentAgentId);
+    if (!shouldClear) {
+      try {
+        const stat = fs.statSync(projection.transcriptPath);
+        shouldClear = now - stat.mtimeMs > GLOBAL_SCAN_ACTIVE_MAX_AGE_MS;
+      } catch {
+        shouldClear = true;
+      }
+    }
+    if (shouldClear) {
+      clearExternalCodexChildProjection(projection, agents, knownJsonlFiles, webview);
+    }
+  }
+}
+
+function scanCodexExternalSessions(
+  includeGlobalSessions: boolean,
+  knownJsonlFiles: Set<string>,
+  nextAgentIdRef: { current: number },
+  agents: Map<number, AgentState>,
+  fileWatchers: Map<number, fs.FSWatcher>,
+  pollingTimers: Map<number, ReturnType<typeof setInterval>>,
+  waitingTimers: Map<number, ReturnType<typeof setTimeout>>,
+  permissionTimers: Map<number, ReturnType<typeof setTimeout>>,
+  webview: vscode.Webview | undefined,
+  persistAgents: () => void,
+): void {
+  const codexProvider = getExternalDiscoveryAdapters().find((provider) => provider.id === 'codex');
+  const projectsRoot = codexProvider?.getProjectsRoot?.();
+  if (!codexProvider || !projectsRoot) return;
+
+  const workspaceKeys = includeGlobalSessions ? null : getCodexWorkspaceKeys();
+  const now = Date.now();
+  const rootCandidates: ExternalSessionDescriptor[] = [];
+  const childCandidates: ExternalSessionDescriptor[] = [];
+
+  for (const transcriptPath of codexProvider.listExternalSessionFiles?.(projectsRoot) ?? []) {
+    const normalizedPath = normalizePathKey(transcriptPath);
+    const projection = attachedExternalCodexChildren.get(normalizedPath);
+    if (projection) {
+      try {
+        const stat = fs.statSync(transcriptPath);
+        if (now - stat.mtimeMs <= GLOBAL_SCAN_ACTIVE_MAX_AGE_MS) {
+          continue;
+        }
+      } catch {
+        // Let stale cleanup handle deleted files.
+        continue;
+      }
+    }
+
+    if (clearDismissedFiles.has(transcriptPath)) continue;
+    const dismissedAt = dismissedJsonlFiles.get(transcriptPath);
+    if (dismissedAt && now - dismissedAt < DISMISSED_COOLDOWN_MS) continue;
+    if (dismissedAt) dismissedJsonlFiles.delete(transcriptPath);
+
+    try {
+      const stat = fs.statSync(transcriptPath);
+      if (now - stat.mtimeMs > GLOBAL_SCAN_ACTIVE_MAX_AGE_MS) continue;
+    } catch {
+      continue;
+    }
+
+    const descriptor = parseCodexExternalSession(transcriptPath);
+    if (!descriptor) continue;
+    if (
+      workspaceKeys &&
+      (!descriptor.cwd || !workspaceKeys.has(normalizePathKey(descriptor.cwd)))
+    ) {
+      continue;
+    }
+
+    if (
+      descriptor.kind === 'root' &&
+      (knownJsonlFiles.has(transcriptPath) || isTrackedAgentFile(transcriptPath, agents))
+    ) {
+      continue;
+    }
+
+    if (descriptor.kind === 'root') {
+      rootCandidates.push(descriptor);
+      continue;
+    }
+    childCandidates.push(descriptor);
+  }
+
+  for (const descriptor of rootCandidates) {
+    const projectDir = descriptor.cwd ?? descriptor.projectDir;
+    const folderName =
+      descriptor.folderName ?? (descriptor.cwd ? path.basename(descriptor.cwd) : undefined);
+    knownJsonlFiles.add(descriptor.transcriptPath);
+    console.log(
+      `[Pixel Agents] Watcher: detected external Codex session ${descriptor.sessionId}${folderName ? ` (${folderName})` : ''}`,
+    );
+    adoptExternalSession(
+      'codex',
+      descriptor.transcriptPath,
+      projectDir,
+      nextAgentIdRef,
+      agents,
+      fileWatchers,
+      pollingTimers,
+      waitingTimers,
+      permissionTimers,
+      webview,
+      persistAgents,
+      folderName,
+    );
+    const adoptedAgent = [...agents.values()].find(
+      (agent) => normalizePathKey(agent.jsonlFile) === normalizePathKey(descriptor.transcriptPath),
+    );
+    if (adoptedAgent) {
+      adoptedAgent.sessionId = descriptor.sessionId;
+      adoptedAgent.codexRootThreadId = descriptor.sessionId;
+    }
+  }
+
+  for (const descriptor of childCandidates) {
+    const decision = decideCodexExternalAttach(descriptor, [...agents.values()]);
+    if (decision.type !== 'attachChild') continue;
+    attachExternalCodexChildProjection(
+      descriptor.transcriptPath,
+      descriptor.sessionId,
+      descriptor.label,
+      decision.parentAgentId,
+      decision.parentToolId,
+      agents,
+      knownJsonlFiles,
+      webview,
+    );
+  }
+}
+
 /**
  * Periodically scans for external sessions (VS Code extension panel, etc.)
  * that produce JSONL files without an associated terminal.
@@ -731,6 +1026,18 @@ export function startExternalSessionScanning(
         );
       }
     }
+    scanCodexExternalSessions(
+      !!watchAllSessionsRef?.current,
+      knownJsonlFiles,
+      nextAgentIdRef,
+      agents,
+      fileWatchers,
+      pollingTimers,
+      waitingTimers,
+      permissionTimers,
+      webview,
+      persistAgents,
+    );
     // If "Watch All Sessions" is ON, also scan all global project dirs
     if (watchAllSessionsRef?.current) {
       scanGlobalProjectDirs(
@@ -745,6 +1052,7 @@ export function startExternalSessionScanning(
         persistAgents,
       );
     }
+    cleanupStaleExternalCodexChildren(agents, knownJsonlFiles, webview);
   }, EXTERNAL_SCAN_INTERVAL_MS);
 }
 
@@ -902,6 +1210,7 @@ function scanGlobalProjectDirs(
 ): void {
   const now = Date.now();
   for (const provider of getExternalDiscoveryAdapters()) {
+    if (provider.id === 'codex') continue;
     const projectsRoot = provider.getProjectsRoot?.();
     if (!projectsRoot) continue;
 
@@ -984,11 +1293,9 @@ export function startStaleExternalAgentCheck(
   jsonlPollTimers: Map<number, ReturnType<typeof setInterval>>,
   webview: vscode.Webview | undefined,
   persistAgents: () => void,
-  hooksEnabledRef?: { current: boolean },
+  _hooksEnabledRef?: { current: boolean },
 ): ReturnType<typeof setInterval> {
   return setInterval(() => {
-    // When hooks are active, SessionEnd handles agent cleanup.
-    if (hooksEnabledRef?.current) return;
     const toRemove: number[] = [];
 
     for (const [id, agent] of agents) {

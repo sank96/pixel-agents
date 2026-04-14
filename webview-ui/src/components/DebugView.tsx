@@ -97,6 +97,9 @@ export function DebugView({
     const isSelected = selectedAgent === id;
     const tools = agentTools[id] || [];
     const subs = subagentTools[id] || {};
+    const orphanParentToolIds = Object.keys(subs).filter(
+      (parentToolId) => !tools.some((tool) => tool.toolId === parentToolId),
+    );
     const status = agentStatuses[id];
     const hasActiveTools = tools.some((t) => !t.done);
     const diag = diagnostics[id];
@@ -125,7 +128,7 @@ export function DebugView({
             ✕
           </Button>
         </span>
-        {(tools.length > 0 || status === 'waiting') && (
+        {(tools.length > 0 || status === 'waiting' || orphanParentToolIds.length > 0) && (
           <div className="flex flex-col gap-[1px] mt-4 pl-4">
             {tools.map((tool) => (
               <div key={tool.toolId}>
@@ -137,6 +140,19 @@ export function DebugView({
                     ))}
                   </div>
                 )}
+              </div>
+            ))}
+            {orphanParentToolIds.map((parentToolId) => (
+              <div key={parentToolId}>
+                <span className="text-base opacity-85 flex items-center gap-5">
+                  <span className="w-6 h-6 rounded-full inline-block shrink-0 bg-status-active" />
+                  External subagent
+                </span>
+                <div className="ml-3 pl-8 mt-[1px] flex flex-col gap-[1px] border-l-2 border-border">
+                  {subs[parentToolId].map((subTool) => (
+                    <ToolLine key={subTool.toolId} tool={subTool} />
+                  ))}
+                </div>
               </div>
             ))}
             {status === 'waiting' && !hasActiveTools && (

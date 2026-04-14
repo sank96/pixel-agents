@@ -91,6 +91,26 @@ export const claudeProvider: ProviderAdapter = {
   getProjectsRoot(): string {
     return path.join(os.homedir(), '.claude', 'projects');
   },
+  listExternalSessionFiles(rootDir: string): string[] {
+    try {
+      return fs
+        .readdirSync(rootDir, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .flatMap((entry) => {
+          const projectDir = path.join(rootDir, entry.name);
+          try {
+            return fs
+              .readdirSync(projectDir)
+              .filter((fileName) => fileName.endsWith('.jsonl'))
+              .map((fileName) => path.join(projectDir, fileName));
+          } catch {
+            return [];
+          }
+        });
+    } catch {
+      return [];
+    }
+  },
   supportsHooksOnCurrentPlatform(): boolean {
     return true;
   },

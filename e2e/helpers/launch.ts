@@ -25,6 +25,96 @@ function getCodexScenario(testTitle: string): string {
   return 'default';
 }
 
+function seedCodexExternalRollout(
+  transcriptPath: string,
+  payload: {
+    id: string;
+    cwd: string;
+    nickname?: string;
+    parentThreadId?: string;
+  },
+): void {
+  fs.mkdirSync(path.dirname(transcriptPath), { recursive: true });
+  fs.writeFileSync(
+    transcriptPath,
+    `${JSON.stringify({
+      timestamp: '2026-04-14T09:46:49.696Z',
+      type: 'session_meta',
+      payload: {
+        id: payload.id,
+        cwd: payload.cwd,
+        agent_nickname: payload.nickname,
+        source: payload.parentThreadId
+          ? {
+              subagent: {
+                thread_spawn: {
+                  parent_thread_id: payload.parentThreadId,
+                  depth: 1,
+                },
+              },
+            }
+          : undefined,
+      },
+    })}\n`,
+    'utf8',
+  );
+}
+
+function seedExternalCodexSessions(
+  testTitle: string,
+  tmpBase: string,
+  tmpHome: string,
+  workspaceDir: string,
+): void {
+  if (!/external codex/i.test(testTitle)) return;
+
+  const codexSessionsRoot = path.join(tmpHome, '.codex', 'sessions', '2026', '04', '14');
+  const otherWorkspaceDir = path.join(tmpBase, 'other-workspace');
+  fs.mkdirSync(otherWorkspaceDir, { recursive: true });
+
+  if (
+    /current workspace/i.test(testTitle) ||
+    /closing an external codex session/i.test(testTitle)
+  ) {
+    seedCodexExternalRollout(
+      path.join(codexSessionsRoot, 'rollout-2026-04-14T09-46-49-root-current.jsonl'),
+      {
+        id: 'root-current-session',
+        cwd: workspaceDir,
+      },
+    );
+  }
+
+  if (/watch all sessions/i.test(testTitle)) {
+    seedCodexExternalRollout(
+      path.join(codexSessionsRoot, 'rollout-2026-04-14T09-47-10-root-global.jsonl'),
+      {
+        id: 'root-global-session',
+        cwd: otherWorkspaceDir,
+      },
+    );
+  }
+
+  if (/child session/i.test(testTitle)) {
+    seedCodexExternalRollout(
+      path.join(codexSessionsRoot, 'rollout-2026-04-14T09-46-49-root-child-parent.jsonl'),
+      {
+        id: 'root-child-parent-session',
+        cwd: workspaceDir,
+      },
+    );
+    seedCodexExternalRollout(
+      path.join(codexSessionsRoot, 'rollout-2026-04-14T09-47-22-child-session.jsonl'),
+      {
+        id: 'child-session',
+        cwd: workspaceDir,
+        nickname: 'Mill',
+        parentThreadId: 'root-child-parent-session',
+      },
+    );
+  }
+}
+
 export interface VSCodeSession {
   app: ElectronApplication;
   window: Page;
@@ -66,6 +156,7 @@ export async function launchVSCode(testTitle: string): Promise<VSCodeSession> {
   // fs.realpathSync only resolves symlinks; .native uses GetFinalPathNameByHandleW
   // which also resolves 8.3 short names to their full form.
   const resolvedWorkspaceDir = IS_WINDOWS ? fs.realpathSync.native(workspaceDir) : workspaceDir;
+  seedExternalCodexSessions(testTitle, tmpBase, tmpHome, resolvedWorkspaceDir);
 
   // macOS: create a temporary keychain so the OS doesn't show "Keychain Not Found" dialog.
   // The isolated HOME has no keychain, and VS Code/Electron's safeStorage triggers a system prompt.

@@ -57,6 +57,7 @@ import {
 import type { LayoutWatcher } from './layoutPersistence.js';
 import { readLayoutFromFile, watchLayoutFile, writeLayoutToFile } from './layoutPersistence.js';
 import { claudeProvider } from './providers/claude/claudeProvider.js';
+import { getExternalDiscoveryAdapters } from './providers/providerAdapters.js';
 import { normalizeProviderSelection } from './providers/providerPreferences.js';
 import { DEFAULT_PROVIDER_ID, isProviderId, type ProviderId } from './providers/providerTypes.js';
 import type { AgentState } from './types.js';
@@ -431,12 +432,19 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
           // Remove all external agents not from the current workspace folders
           const workspaceDirs = new Set<string>();
           for (const folder of vscode.workspace.workspaceFolders ?? []) {
-            const dir = getProjectDirPath(DEFAULT_PROVIDER_ID, folder.uri.fsPath);
-            if (dir) workspaceDirs.add(dir);
+            for (const provider of getExternalDiscoveryAdapters()) {
+              const dir = provider.getProjectDir(folder.uri.fsPath);
+              if (dir) {
+                workspaceDirs.add(path.resolve(dir).toLowerCase());
+              }
+            }
           }
           const toRemove: number[] = [];
           for (const [id, agent] of this.agents) {
-            if (agent.isExternal && !workspaceDirs.has(agent.projectDir)) {
+            if (
+              agent.isExternal &&
+              !workspaceDirs.has(path.resolve(agent.projectDir).toLowerCase())
+            ) {
               toRemove.push(id);
             }
           }
