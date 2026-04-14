@@ -12,7 +12,7 @@ const CODEX_DESCRIPTOR: ProviderDescriptor = {
   id: 'codex',
   displayName: 'Codex',
   terminalPrefix: 'Codex',
-  supportsExternalDiscovery: false,
+  supportsExternalDiscovery: true,
   supportsStructuredEvents: true,
 };
 
@@ -53,5 +53,11 @@ export const codexProvider: ProviderAdapter = {
   buildLaunchPlan: buildCodexLaunchPlan,
   getProjectDir(cwd?: string): string {
     return cwd || os.homedir();
+  },
+  getProjectsRoot(): string {
+    return path.join(os.homedir(), '.codex', 'sessions');
+  },
+  supportsHooksOnCurrentPlatform(): boolean {
+    return process.platform !== 'win32';
   },
 };

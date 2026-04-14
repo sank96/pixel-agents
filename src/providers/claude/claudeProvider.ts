@@ -91,6 +91,9 @@ export const claudeProvider: ProviderAdapter = {
   getProjectsRoot(): string {
     return path.join(os.homedir(), '.claude', 'projects');
   },
+  supportsHooksOnCurrentPlatform(): boolean {
+    return true;
+  },
   installIntegration(extensionPath: string): void {
     installClaudeHooks();
     copyClaudeHookScript(extensionPath);

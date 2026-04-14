@@ -18,7 +18,7 @@ const PROVIDERS: Record<ProviderId, ProviderDescriptor> = {
     id: 'codex',
     displayName: 'Codex',
     terminalPrefix: 'Codex',
-    supportsExternalDiscovery: false,
+    supportsExternalDiscovery: true,
     supportsStructuredEvents: true,
   },
 };

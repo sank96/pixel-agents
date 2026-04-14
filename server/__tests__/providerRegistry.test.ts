@@ -10,5 +10,7 @@ describe('providerRegistry', () => {
     ]);
     expect(getProviderById('claude')?.displayName).toBe('Claude Code');
     expect(getProviderById('codex')?.displayName).toBe('Codex');
+    expect(getProviderById('claude')?.supportsExternalDiscovery).toBe(true);
+    expect(getProviderById('codex')?.supportsExternalDiscovery).toBe(true);
   });
 });
